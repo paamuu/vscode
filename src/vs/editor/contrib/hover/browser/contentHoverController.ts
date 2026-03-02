@@ -19,6 +19,7 @@ import { HoverVerbosityAction } from '../../../common/languages.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
 import { isMousePositionWithinElement, shouldShowHover, isTriggerModifierPressed } from './hoverUtils.js';
 import { ContentHoverWidgetWrapper } from './contentHoverWidgetWrapper.js';
+import { QuickFixHoverController } from './quickFixHoverController.js';
 import './hover.css';
 import { Emitter } from '../../../../base/common/event.js';
 import { isOnColorDecorator } from '../../colorPicker/browser/hoverColorPicker/hoverColorPicker.js';
@@ -64,6 +65,9 @@ export class ContentHoverController extends Disposable implements IEditorContrib
 		@IKeybindingService private readonly _keybindingService: IKeybindingService
 	) {
 		super();
+
+		// 确保 QuickFixHoverController 在内容 hover 控制器初始化时一并初始化
+		this._instantiationService.createInstance(QuickFixHoverController, this._editor);
 		this._reactToEditorMouseMoveRunner = this._register(new RunOnceScheduler(
 			() => {
 				if (this._mouseMoveEvent) {
