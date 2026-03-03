@@ -6,7 +6,7 @@
 import { DECREASE_HOVER_VERBOSITY_ACTION_ID, INCREASE_HOVER_VERBOSITY_ACTION_ID, SHOW_OR_FOCUS_HOVER_ACTION_ID } from './hoverActionIds.js';
 import { IKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
-import { ICodeEditor, IEditorMouseEvent, IPartialEditorMouseEvent } from '../../../browser/editorBrowser.js';
+import { ICodeEditor, IEditorMouseEvent, IPartialEditorMouseEvent, MouseTargetType } from '../../../browser/editorBrowser.js';
 import { ConfigurationChangedEvent, EditorOption } from '../../../common/config/editorOptions.js';
 import { Range } from '../../../common/core/range.js';
 import { IEditorContribution, IScrollEvent } from '../../../common/editorCommon.js';
@@ -18,12 +18,14 @@ import { ResultKind } from '../../../../platform/keybinding/common/keybindingRes
 import { HoverVerbosityAction } from '../../../common/languages.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
 import { isMousePositionWithinElement, shouldShowHover, isTriggerModifierPressed } from './hoverUtils.js';
-import { ContentHoverWidgetWrapper } from './contentHoverWidgetWrapper.js';
+import { ContentHoverWidgetWrapper, QuickFixContentHoverWidget } from './contentHoverWidgetWrapper.js';
 import './hover.css';
 import { Emitter } from '../../../../base/common/event.js';
 import { isOnColorDecorator } from '../../colorPicker/browser/hoverColorPicker/hoverColorPicker.js';
 import { isModifierKey, KeyCode } from '../../../../base/common/keyCodes.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+import { IMarkerService } from '../../../../platform/markers/common/markers.js';
+import { ContentHoverWidget } from './contentHoverWidget.js';
 
 // sticky hover widget which doesn't disappear on focus out and such
 const _sticky = false
@@ -48,6 +50,7 @@ export class ContentHoverController extends Disposable implements IEditorContrib
 	private readonly _listenersStore = new DisposableStore();
 
 	private _contentWidget: ContentHoverWidgetWrapper | undefined;
+	private _quickFixContentWidget: ContentHoverWidgetWrapper | undefined;
 
 	private _mouseMoveEvent: IEditorMouseEvent | undefined;
 	private _reactToEditorMouseMoveRunner: RunOnceScheduler;
@@ -61,9 +64,11 @@ export class ContentHoverController extends Disposable implements IEditorContrib
 		private readonly _editor: ICodeEditor,
 		@IContextMenuService _contextMenuService: IContextMenuService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
-		@IKeybindingService private readonly _keybindingService: IKeybindingService
+		@IKeybindingService private readonly _keybindingService: IKeybindingService,
+		@IMarkerService private readonly _markerService: IMarkerService
 	) {
 		super();
+		console.log(this._markerService);
 		this._reactToEditorMouseMoveRunner = this._register(new RunOnceScheduler(
 			() => {
 				if (this._mouseMoveEvent) {
@@ -141,6 +146,11 @@ export class ContentHoverController extends Disposable implements IEditorContrib
 		this._isMouseDown = true;
 		const shouldKeepHoverWidgetVisible = this._shouldKeepHoverWidgetVisible(mouseEvent);
 		if (shouldKeepHoverWidgetVisible) {
+			return;
+		}
+		if (mouseEvent.target.type === MouseTargetType.CONTENT_TEXT && mouseEvent.target.range) {
+			const quickFixWidget = this._getOrCreateQuickFixWidget();
+			quickFixWidget.startShowingAtRange(mouseEvent.target.range, HoverStartMode.Immediate, HoverStartSource.Mouse, true);
 			return;
 		}
 		this.hideContentHover();
@@ -312,15 +322,44 @@ export class ContentHoverController extends Disposable implements IEditorContrib
 			return;
 		}
 		this._contentWidget?.hide();
+		this._quickFixContentWidget?.hide();
 	}
 
 	private _getOrCreateContentWidget(): ContentHoverWidgetWrapper {
 		if (!this._contentWidget) {
-			this._contentWidget = this._instantiationService.createInstance(ContentHoverWidgetWrapper, this._editor);
+			this._contentWidget = this._instantiationService.createInstance(ContentHoverWidgetWrapper, this._editor, ContentHoverWidget);
 			this._listenersStore.add(this._contentWidget.onContentsChanged(() => this._onHoverContentsChanged.fire()));
 		}
 		return this._contentWidget;
 	}
+
+	private _getOrCreateQuickFixWidget(): ContentHoverWidgetWrapper {
+		if (!this._quickFixContentWidget) {
+			this._quickFixContentWidget = this._instantiationService.createInstance(ContentHoverWidgetWrapper, this._editor, QuickFixContentHoverWidget);
+			this._listenersStore.add(this._quickFixContentWidget.onContentsChanged(() => this._onHoverContentsChanged.fire()));
+		}
+		return this._quickFixContentWidget;
+	}
+
+	// private _hasErrorMarkerAtRange(range: Range): boolean {
+	// 	const model = this._editor.getModel();
+	// 	if (!model) {
+	// 		return false;
+	// 	}
+	// 	const markers = this._markerService.read({
+	// 		resource: model.uri,
+	// 		severities: MarkerSeverity.Error
+	// 	});
+	// 	return markers.some(marker => Range.areIntersecting(
+	// 		{
+	// 			startLineNumber: marker.startLineNumber,
+	// 			startColumn: marker.startColumn,
+	// 			endLineNumber: marker.endLineNumber,
+	// 			endColumn: marker.endColumn
+	// 		},
+	// 		range
+	// 	));
+	// }
 
 	public showContentHover(
 		range: Range,
@@ -412,5 +451,6 @@ export class ContentHoverController extends Disposable implements IEditorContrib
 		this._unhookListeners();
 		this._listenersStore.dispose();
 		this._contentWidget?.dispose();
+		this._quickFixContentWidget?.dispose();
 	}
 }

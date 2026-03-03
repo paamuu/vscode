@@ -24,6 +24,13 @@ import { isMousePositionWithinElement } from './hoverUtils.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 
+export class QuickFixContentHoverWidget extends ContentHoverWidget {
+	constructor(...args: ConstructorParameters<typeof ContentHoverWidget>) {
+		super(...args);
+		this.getDomNode().classList.add('test-fixfix');
+	}
+}
+
 export class ContentHoverWidgetWrapper extends Disposable implements IHoverWidget {
 
 	private _currentResult: ContentHoverResult | null = null;
@@ -38,13 +45,14 @@ export class ContentHoverWidgetWrapper extends Disposable implements IHoverWidge
 
 	constructor(
 		private readonly _editor: ICodeEditor,
+		private readonly _hoverWidgetCtor: typeof ContentHoverWidget = ContentHoverWidget,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 		@IKeybindingService private readonly _keybindingService: IKeybindingService,
 		@IHoverService private readonly _hoverService: IHoverService,
 		@IClipboardService private readonly _clipboardService: IClipboardService
 	) {
 		super();
-		this._contentHoverWidget = this._register(this._instantiationService.createInstance(ContentHoverWidget, this._editor));
+		this._contentHoverWidget = this._register(this._instantiationService.createInstance(this._hoverWidgetCtor, this._editor));
 		this._participants = this._initializeHoverParticipants();
 		this._hoverOperation = this._register(new HoverOperation(this._editor, new ContentHoverComputer(this._editor, this._participants)));
 		this._registerListeners();
